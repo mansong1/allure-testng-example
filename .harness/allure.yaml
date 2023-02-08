@@ -1,0 +1,77 @@
+pipeline:
+  name: Allure example
+  identifier: allureexample
+  projectIdentifier: martinansong
+  orgIdentifier: CI_Training
+  description: Pipeline demonstrating usage of plugins/artifact-metadata-publisher plugin to publish to artifact tab. Codebase repo used is github.com/allure-examples/allure-testng-example
+  properties:
+    ci:
+      codebase:
+        connectorRef: account.mansong
+        repoName: allure-testng-example
+        build: <+input>
+  stages:
+    - stage:
+        identifier: allure_test_publisher
+        name: Allure test publisher
+        spec:
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  identifier: tests
+                  name: Run tests
+                  spec:
+                    command: ./mvnw clean test site
+                    connectorRef: Docker_Hub
+                    image: openjdk:11
+                    shell: Sh
+                  type: Run
+              - step:
+                  identifier: allure
+                  name: allure
+                  spec:
+                    command: |
+                      cd target
+                      allure generate allure-results --clean -o allure-report
+                    connectorRef: Docker_Hub
+                    image: solutis/allure:2.9.0
+                  type: Run
+              - step:
+                  identifier: allure_combine
+                  name: combine report
+                  spec:
+                    command: |
+                      cd target/allure-report
+                      allure-combine .
+                      cd ../..
+                      cp target/allure-report/complete.html .
+                    connectorRef: Docker_Hub
+                    image: shubham149/allure-combine:latest
+                  type: Run
+              - step:
+                  identifier: uploadreport
+                  name: upload-report
+                  spec:
+                    connectorRef: account.ciplaygcp
+                    bucket: demo-allure-report
+                    sourcePath: target/allure-report/complete.html
+                    target: <+pipeline.sequenceId>/index.html
+                  type: GCSUpload
+              - step:
+                  identifier: publish_allure_report_metadata
+                  name: publish metadata for allure report
+                  spec:
+                    connectorRef: Docker_Hub
+                    image: plugins/artifact-metadata-publisher
+                    settings:
+                      artifact_file: artifact.txt
+                      file_urls: https://storage.googleapis.com/demo-allure-report/<+pipeline.sequenceId>/index.html
+                  type: Plugin
+          infrastructure:
+            spec:
+              connectorRef: sedemo
+              namespace: se-demo
+            type: KubernetesDirect
+          serviceDependencies: []
+        type: CI
